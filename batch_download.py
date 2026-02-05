@@ -15,10 +15,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Windows终端设置UTF-8编码
+# Windows终端设置UTF-8编码（立即输出）
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', write_through=True, line_buffering=True)
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', write_through=True, line_buffering=True)
 
 # 添加当前目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,12 +27,12 @@ from Zlibrary import Zlibrary
 
 # ========== 配置区域 ==========
 # 默认登录信息
-DEFAULT_EMAIL = "YourUSERNAME"
-DEFAULT_PASSWORD = "YourPASSWORD"
+DEFAULT_EMAIL = "madmole@sina.com"
+DEFAULT_PASSWORD = "madmole123"
 
 # 或者使用Remix Token（推荐）
-DEFAULT_REMIX_USERID = ""
-DEFAULT_REMIX_USERKEY = ""
+DEFAULT_REMIX_USERID = "38798736"
+DEFAULT_REMIX_USERKEY = "1a80517ce7ede653711d929a3291f374"
 
 # 下载配置
 DEFAULT_INPUT_FILE = "list.txt"
@@ -119,13 +119,17 @@ class DownloadState:
 
 def parse_list_file(input_file: str) -> list:
     """
-    解析list.txt文件，提取标记了v的版本
+    解析list.txt文件，提取要下载的版本
+
+    规则:
+    1. 有 v 标记的版本优先下载
+    2. 如果没有 v 标记但只有一个版本，自动下载
 
     Args:
         input_file: list.txt文件路径
 
     Returns:
-        标记版本列表
+        要下载的书籍版本列表
     """
     books_to_download = []
 
@@ -134,6 +138,8 @@ def parse_list_file(input_file: str) -> list:
 
     current_book_info = {}
     in_version_block = False
+    marked_versions = {}  # {book_key: book_info}
+    all_versions = {}     # {book_title: [book_info_list]}
 
     for line in lines:
         # 保留行首空白（用于识别v标记），但去除尾随空白
@@ -142,6 +148,10 @@ def parse_list_file(input_file: str) -> list:
         # 检查是否在版本块中且标记了v
         # 支持 "v【版本 1】", "v 【版本 1】", "v   【版本 1】" 等格式
         if re.match(r'^\s*v\s*【版本\s*\d+】', stripped_line):
+            in_version_block = True
+            continue
+        elif re.match(r'^\s*【版本\s*\d+】', stripped_line):
+            # 未标记v的版本
             in_version_block = True
             continue
 
@@ -161,11 +171,78 @@ def parse_list_file(input_file: str) -> list:
                 current_book_info['id'] = stripped_line.split(':', 1)[1].strip()
             elif stripped_line.startswith('Hash:'):
                 current_book_info['hash'] = stripped_line.split(':', 1)[1].strip()
-                # 版本块结束，保存
+
+                # 版本块结束
                 if current_book_info.get('id') and current_book_info.get('hash'):
-                    books_to_download.append(current_book_info.copy())
+                    title = current_book_info.get('title', 'unknown')
+
+                    # 收集所有版本
+                    if title not in all_versions:
+                        all_versions[title] = []
+                    all_versions[title].append(current_book_info.copy())
+
                 current_book_info = {}
                 in_version_block = False
+
+    # 第二遍：收集带v标记的版本
+    in_version_block = False
+    current_book_info = {}
+
+    for line in lines:
+        stripped_line = line.strip()
+        is_marked = re.match(r'^\s*v\s*【版本\s*\d+】', stripped_line) is not None
+
+        if is_marked or re.match(r'^\s*【版本\s*\d+】', stripped_line):
+            in_version_block = True
+            if is_marked:
+                current_book_info['_marked'] = True
+            else:
+                current_book_info['_marked'] = False
+            continue
+
+        if in_version_block:
+            if stripped_line.startswith('书名:'):
+                current_book_info['title'] = stripped_line.split(':', 1)[1].strip()
+            elif stripped_line.startswith('作者:'):
+                current_book_info['author'] = stripped_line.split(':', 1)[1].strip()
+            elif stripped_line.startswith('出版社:'):
+                current_book_info['publisher'] = stripped_line.split(':', 1)[1].strip()
+            elif stripped_line.startswith('年份:'):
+                current_book_info['year'] = stripped_line.split(':', 1)[1].strip()
+            elif stripped_line.startswith('语言:'):
+                current_book_info['language'] = stripped_line.split(':', 1)[1].strip()
+            elif stripped_line.startswith('ID:'):
+                current_book_info['id'] = stripped_line.split(':', 1)[1].strip()
+            elif stripped_line.startswith('Hash:'):
+                current_book_info['hash'] = stripped_line.split(':', 1)[1].strip()
+
+                if current_book_info.get('id') and current_book_info.get('hash'):
+                    # 如果有v标记，添加到标记列表
+                    if current_book_info.get('_marked'):
+                        book_key = f"{current_book_info['id']}_{current_book_info['hash']}"
+                        marked_versions[book_key] = {k: v for k, v in current_book_info.items() if k != '_marked'}
+
+                current_book_info = {}
+                in_version_block = False
+
+    # 生成最终下载列表：
+    # 1. 优先使用带v标记的版本
+    # 2. 没有v标记但只有一个版本的，自动添加
+    for title, versions in all_versions.items():
+        # 检查是否有标记版本
+        has_marked = False
+        for version in versions:
+            book_key = f"{version['id']}_{version['hash']}"
+            if book_key in marked_versions:
+                has_marked = True
+                if book_key not in [f"{b['id']}_{b['hash']}" for b in books_to_download]:
+                    books_to_download.append(version)
+                break
+
+        # 如果没有标记且只有一个版本，自动下载
+        if not has_marked and len(versions) == 1:
+            if versions[0]['id'] not in [b['id'] for b in books_to_download]:
+                books_to_download.append(versions[0])
 
     return books_to_download
 
@@ -285,6 +362,7 @@ def main():
 
     # 解析list.txt
     print(f"\n正在解析文件: {DEFAULT_INPUT_FILE}")
+    print(f"[状态] 正在读取文件...", flush=True)
     books_to_download = parse_list_file(DEFAULT_INPUT_FILE)
 
     if not books_to_download:
@@ -296,11 +374,18 @@ def main():
     # 合并待下载列表（从状态文件中）
     if not force and download_state.get_pending_count() > 0:
         print(f"\n[注意] 从上次运行恢复 {download_state.get_pending_count()} 个待下载任务")
+        print(f"[状态] 正在合并待下载列表...", flush=True)
         pending_books = download_state.state["pending"]
-        # 去重
+        # 去重：基于id+hash
+        pending_keys = set(f"{b['id']}_{b['hash']}" for b in pending_books)
+        existing_keys = set(f"{b['id']}_{b['hash']}" for b in books_to_download)
+
         for book in pending_books:
-            if book['id'] not in [b['id'] for b in books_to_download]:
+            book_key = f"{book['id']}_{book['hash']}"
+            if book_key not in existing_keys:
                 books_to_download.append(book)
+                existing_keys.add(book_key)
+
         print(f"✅ 合并后待下载: {len(books_to_download)} 本")
 
     # 去重已下载

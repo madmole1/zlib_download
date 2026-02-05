@@ -21,6 +21,7 @@
 ## 文件说明
 
 - `batch_search.py` - **批量搜索工具（优化版 - 推荐）**（智能约束策略，一次搜索+本地筛选）
+- `batch_download.py` - **批量下载工具**（从list.txt下载标记的版本）
 - `batch_search_mock_v2.py` - 批量搜索模拟版（优化版，测试智能策略）
 - `batch_search_mock_strategy.py` - 批量搜索模拟版（旧版）
 - `batch_search_mock.py` - 批量搜索模拟版（用于测试）
@@ -100,6 +101,61 @@ python batch_search.py 1.txt my_results.txt
 - 搜索统计信息
 
 **注意**: `batch_search.py` 需要网络连接到 `1lib.sk`。如果网络连接有问题，可以使用模拟版 `batch_search_mock.py` 进行测试。
+
+### 批量下载
+
+#### 1. 标记要下载的版本
+
+在 `list.txt` 中，在要下载的版本前添加 `v` 标记：
+
+```
+  【版本 1】
+    书名: Python编程：从入门到实践
+    ...
+  v【版本 2】    ← 添加 v 标记
+    书名: Python编程：从入门到实践（第2版）
+    ...
+```
+
+**注意**: 如果某本书只有一个版本，也需要标记 `v` 才会被下载。
+
+#### 2. 预览下载（Dry-run模式）
+
+```bash
+python batch_download.py --dry-run
+```
+
+#### 3. 开始下载
+
+```bash
+python batch_download.py
+```
+
+#### 4. 强制重新下载
+
+```bash
+python batch_download.py --force
+```
+
+#### 功能特性
+
+- ✅ 自动解析 `v` 标记的版本
+- ✅ Dry-run模式预览下载内容
+- ✅ 下载次数限制检查（每日10次）
+- ✅ 断点续传（pending任务持久化到 `download_state.json`）
+- ✅ 自动保存未下载任务，下次运行优先处理
+- ✅ 跳过已下载的书籍
+- ✅ 显示详细下载进度和状态
+
+#### 下载状态文件
+
+`download_state.json` 记录三种状态：
+
+- `downloaded`: 已成功下载的书籍
+- `pending`: 因次数限制未下载的书籍（下次运行优先处理）
+- `failed`: 下载失败的书籍（会自动重试）
+
+当更换 `list.txt` 时，`pending` 列表**不会丢失**，会自动合并到新的下载任务中。
 
 ### 快速测试
 
@@ -284,4 +340,3 @@ pip install requests
 ## 许可证
 
 MIT License
-# zlib_download
