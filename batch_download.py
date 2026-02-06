@@ -27,12 +27,12 @@ from Zlibrary import Zlibrary
 
 # ========== 配置区域 ==========
 # 默认登录信息
-DEFAULT_EMAIL = "madmole@sina.com"
-DEFAULT_PASSWORD = "madmole123"
+DEFAULT_EMAIL = ""
+DEFAULT_PASSWORD = ""
 
 # 或者使用Remix Token（推荐）
-DEFAULT_REMIX_USERID = "38798736"
-DEFAULT_REMIX_USERKEY = "1a80517ce7ede653711d929a3291f374"
+DEFAULT_REMIX_USERID = ""
+DEFAULT_REMIX_USERKEY = ""
 
 # 下载配置
 DEFAULT_INPUT_FILE = "list.txt"
